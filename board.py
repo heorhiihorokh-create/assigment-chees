@@ -87,7 +87,22 @@ class Board:
             raise ValueError("Cannot move to the same square")
 
         piece = self.get_piece(from_sq)
+        # Branch by piece type
+        if piece.symbol == "P":
+            pass  # pawn rules (будут позже)
 
+        elif piece.symbol == "N":
+            pass  # knight rules (будут позже)
+
+        elif piece.symbol in ("R", "B", "Q"):
+            pass  # sliding pieces (у тебя уже есть логика ниже)
+
+        elif piece.symbol == "K":
+            pass  # king rules (будут позже)
+
+        else:
+            raise ValueError("Unknown piece type")
+        
         if piece is None:
             raise ValueError("No piece on source square")
 
