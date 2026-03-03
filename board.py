@@ -92,6 +92,9 @@ class Board:
             raise ValueError("No piece on source square")
 
         target_piece = self.get_piece(to_sq)
+        # prevent capturing same color
+        if target_piece is not None and target_piece.color == piece.color:
+            raise ValueError("Cannot capture your own piece")
 
         # capture logic (no rules yet)
         if target_piece is not None:
