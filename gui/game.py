@@ -1,4 +1,5 @@
 import pygame
+import random
 from board import Board
 
 WIDTH = 800
@@ -10,6 +11,30 @@ SQUARE = WIDTH // COLS
 LIGHT = (240, 217, 181)
 DARK = (181, 136, 99)
 HIGHLIGHT = (246, 246, 105)
+
+
+class Confetti:
+    def __init__(self):
+        self.x = random.randint(0, WIDTH)
+        self.y = random.randint(-HEIGHT, 0)
+        self.speed = random.randint(3, 7)
+        self.color = random.choice([
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (255, 0, 255),
+            (0, 255, 255),
+        ])
+
+    def update(self):
+        self.y += self.speed
+        if self.y > HEIGHT:
+            self.y = random.randint(-50, 0)
+            self.x = random.randint(0, WIDTH)
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, self.color, (self.x, self.y), 4)
 
 
 class ChessGUI:
@@ -26,6 +51,12 @@ class ChessGUI:
 
         self.images = {}
         self.load_images()
+
+        self.winner = None
+        self.confetti = [Confetti() for _ in range(150)]
+
+        self.big_font = pygame.font.SysFont("arial", 72)
+        self.small_font = pygame.font.SysFont("arial", 32)
 
     def load_images(self):
         pieces = ["P", "R", "N", "B", "Q", "K"]
@@ -73,6 +104,24 @@ class ChessGUI:
                         (col * SQUARE, row * SQUARE),
                     )
 
+    def draw_victory_screen(self):
+        overlay = pygame.Surface((WIDTH, HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        for c in self.confetti:
+            c.update()
+            c.draw(self.screen)
+
+        text = self.big_font.render("YOU WIN!", True, (255, 215, 0))
+        rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50))
+        self.screen.blit(text, rect)
+
+        sub = self.small_font.render("Powered by Heorhii Horokh", True, (255, 255, 255))
+        sub_rect = sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20))
+        self.screen.blit(sub, sub_rect)
+
     def get_square_from_mouse(self, pos):
         x, y = pos
         col = x // SQUARE
@@ -87,13 +136,17 @@ class ChessGUI:
         while running:
             self.draw_board()
             self.draw_pieces()
+
+            if self.winner:
+                self.draw_victory_screen()
+
             pygame.display.flip()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
-                if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.type == pygame.MOUSEBUTTONDOWN and not self.winner:
                     square = self.get_square_from_mouse(pygame.mouse.get_pos())
 
                     if self.selected_square is None:
@@ -102,8 +155,15 @@ class ChessGUI:
                             self.selected_square = square
                     else:
                         try:
+                            target = self.board.get_piece(square)
                             self.board.move_piece(self.selected_square, square)
+
+                            # если убили короля — победа
+                            if target and target.symbol == "K":
+                                self.winner = self.turn
+
                             self.turn = "BLACK" if self.turn == "WHITE" else "WHITE"
+
                         except Exception as e:
                             print("Illegal move:", e)
 
