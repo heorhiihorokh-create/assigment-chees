@@ -1,5 +1,4 @@
 from __future__ import annotations
-from dataclasses import dataclass
 from typing import Dict, Optional
 from pieces import Pawn, Rook, Knight, Bishop, Queen, King
 
@@ -8,31 +7,30 @@ RANKS = "12345678"
 
 
 def is_valid_square(square: str) -> bool:
-    return isinstance(square, str) and len(square) == 2 and square[0] in FILES and square[1] in RANKS
+    return len(square) == 2 and square[0] in FILES and square[1] in RANKS
 
 
-@dataclass(frozen=True)
-class Move:
-    from_sq: str
-    to_sq: str
+def square_to_xy(square: str) -> tuple[int, int]:
+    return FILES.index(square[0]), RANKS.index(square[1])
+
+
+def xy_to_square(x: int, y: int) -> str:
+    return f"{FILES[x]}{RANKS[y]}"
 
 
 class Board:
-    def __init__(self) -> None:
-        # a1..h8 -> piece or None
-        self.squares: Dict[str, Optional[object]] = {f"{f}{r}": None for r in RANKS for f in FILES}
+    def __init__(self):
+        self.squares: Dict[str, Optional[object]] = {
+            f"{f}{r}": None for r in RANKS for f in FILES
+        }
 
     def get_piece(self, square: str):
-        if not is_valid_square(square):
-            raise ValueError(f"Invalid square: {square}")
         return self.squares[square]
 
-    def set_piece(self, square: str, piece) -> None:
-        if not is_valid_square(square):
-            raise ValueError(f"Invalid square: {square}")
+    def set_piece(self, square: str, piece):
         self.squares[square] = piece
 
-    def print_board(self) -> None:
+    def print_board(self):
         for r in reversed(RANKS):
             row = []
             for f in FILES:
@@ -41,148 +39,124 @@ class Board:
                 if p is None:
                     row.append(".")
                 else:
-                    sym = getattr(p, "symbol", "X")
-                    color = getattr(p, "color", "WHITE")
-                    row.append(sym.upper() if color == "WHITE" else sym.lower())
-            print(" ".join(row), f"  {r}")
+                    row.append(p.symbol.upper() if p.color == "WHITE" else p.symbol.lower())
+            print(" ".join(row), f" {r}")
         print(" ".join(FILES))
 
-    def setup_board(self) -> None:
-        # Pawns
+    def setup_board(self):
         for f in FILES:
             self.set_piece(f"{f}2", Pawn("WHITE", f"{f}2"))
             self.set_piece(f"{f}7", Pawn("BLACK", f"{f}7"))
-  
-        # Rooks
-        self.set_piece("a1", Rook("WHITE", "a1"))
-        self.set_piece("h1", Rook("WHITE", "h1"))
-        self.set_piece("a8", Rook("BLACK", "a8"))
-        self.set_piece("h8", Rook("BLACK", "h8"))
 
-        # Knights
-        self.set_piece("b1", Knight("WHITE", "b1"))
-        self.set_piece("g1", Knight("WHITE", "g1"))
-        self.set_piece("b8", Knight("BLACK", "b8"))
-        self.set_piece("g8", Knight("BLACK", "g8"))
+        placements = [
+            ("a1", Rook), ("h1", Rook),
+            ("a8", Rook), ("h8", Rook),
+            ("b1", Knight), ("g1", Knight),
+            ("b8", Knight), ("g8", Knight),
+            ("c1", Bishop), ("f1", Bishop),
+            ("c8", Bishop), ("f8", Bishop),
+            ("d1", Queen), ("d8", Queen),
+            ("e1", King), ("e8", King),
+        ]
 
-        # Bishops
-        self.set_piece("c1", Bishop("WHITE", "c1"))
-        self.set_piece("f1", Bishop("WHITE", "f1"))
-        self.set_piece("c8", Bishop("BLACK", "c8"))
-        self.set_piece("f8", Bishop("BLACK", "f8"))
+        for square, cls in placements:
+            color = "WHITE" if square[1] in "12" else "BLACK"
+            self.set_piece(square, cls(color, square))
 
-        # Queens
-        self.set_piece("d1", Queen("WHITE", "d1"))
-        self.set_piece("d8", Queen("BLACK", "d8"))
-
-        # Kings
-        self.set_piece("e1", King("WHITE", "e1"))
-        self.set_piece("e8", King("BLACK", "e8"))
-
-    def move_piece(self, from_sq: str, to_sq: str) -> None:
-        if not is_valid_square(from_sq) or not is_valid_square(to_sq):
-            raise ValueError("Invalid square")
-
-        if from_sq == to_sq:
-            raise ValueError("Cannot move to same square")
-
-        piece = self.get_piece(from_sq)
-        if piece is None:
-            raise ValueError("No piece on source square")
-
-        target_piece = self.get_piece(to_sq)
-
-        if target_piece is not None and target_piece.color == piece.color:
-            raise ValueError("Cannot capture own piece")
-
+    def squares_between(self, from_sq: str, to_sq: str):
         fx, fy = square_to_xy(from_sq)
         tx, ty = square_to_xy(to_sq)
 
         dx = tx - fx
         dy = ty - fy
 
-        # =========================
+        if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+            return []
+
+        step_x = 0 if dx == 0 else (1 if dx > 0 else -1)
+        step_y = 0 if dy == 0 else (1 if dy > 0 else -1)
+
+        squares = []
+        x, y = fx + step_x, fy + step_y
+
+        while (x, y) != (tx, ty):
+            squares.append(xy_to_square(x, y))
+            x += step_x
+            y += step_y
+
+        return squares
+
+    def move_piece(self, from_sq: str, to_sq: str):
+        if not is_valid_square(from_sq) or not is_valid_square(to_sq):
+            raise ValueError("Invalid square")
+
+        piece = self.get_piece(from_sq)
+        if piece is None:
+            raise ValueError("No piece on source square")
+
+        target = self.get_piece(to_sq)
+
+        if target and target.color == piece.color:
+            raise ValueError("Cannot capture own piece")
+
+        fx, fy = square_to_xy(from_sq)
+        tx, ty = square_to_xy(to_sq)
+
+        dx, dy = tx - fx, ty - fy
+
         # PAWN
-        # =========================
         if piece.symbol == "P":
             direction = 1 if piece.color == "WHITE" else -1
-            start_rank = 1 if piece.color == "WHITE" else 6
+            start = 1 if piece.color == "WHITE" else 6
 
-            # forward
             if dx == 0:
-                if dy == direction:
-                    if target_piece is not None:
-                        raise ValueError("Pawn forward square occupied")
-
-                elif dy == 2 * direction and fy == start_rank:
-                    intermediate = xy_to_square(fx, fy + direction)
-                    if target_piece is not None or self.get_piece(intermediate) is not None:
+                if dy == direction and target is None:
+                    pass
+                elif dy == 2 * direction and fy == start:
+                    mid = xy_to_square(fx, fy + direction)
+                    if self.get_piece(mid) or target:
                         raise ValueError("Pawn path blocked")
                 else:
                     raise ValueError("Illegal pawn move")
-
-            # diagonal capture
-            elif abs(dx) == 1 and dy == direction:
-                if target_piece is None:
-                    raise ValueError("Pawn captures diagonally only")
+            elif abs(dx) == 1 and dy == direction and target:
+                pass
             else:
                 raise ValueError("Illegal pawn move")
 
-        # =========================
         # KNIGHT
-        # =========================
         elif piece.symbol == "N":
             if not ((abs(dx) == 2 and abs(dy) == 1) or (abs(dx) == 1 and abs(dy) == 2)):
                 raise ValueError("Illegal knight move")
 
-        # =========================
         # KING
-        # =========================
         elif piece.symbol == "K":
             if max(abs(dx), abs(dy)) != 1:
                 raise ValueError("Illegal king move")
 
-        # =========================
         # ROOK
-        # =========================
         elif piece.symbol == "R":
             if not (dx == 0 or dy == 0):
                 raise ValueError("Illegal rook move")
+            if any(self.get_piece(sq) for sq in self.squares_between(from_sq, to_sq)):
+                raise ValueError("Path blocked")
 
-            for sq in self.squares_between(from_sq, to_sq):
-                if self.get_piece(sq) is not None:
-                    raise ValueError("Path blocked")
-
-        # =========================
         # BISHOP
-        # =========================
         elif piece.symbol == "B":
             if abs(dx) != abs(dy):
                 raise ValueError("Illegal bishop move")
+            if any(self.get_piece(sq) for sq in self.squares_between(from_sq, to_sq)):
+                raise ValueError("Path blocked")
 
-            for sq in self.squares_between(from_sq, to_sq):
-                if self.get_piece(sq) is not None:
-                    raise ValueError("Path blocked")
-
-        # =========================
         # QUEEN
-        # =========================
         elif piece.symbol == "Q":
             if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
                 raise ValueError("Illegal queen move")
+            if any(self.get_piece(sq) for sq in self.squares_between(from_sq, to_sq)):
+                raise ValueError("Path blocked")
 
-            for sq in self.squares_between(from_sq, to_sq):
-                if self.get_piece(sq) is not None:
-                    raise ValueError("Path blocked")
+        if target:
+            target.is_alive = False
 
-        else:
-            raise ValueError("Unknown piece type")
-
-        # capture
-        if target_piece is not None:
-            target_piece.is_alive = False
-
-        # move
         self.set_piece(to_sq, piece)
         self.set_piece(from_sq, None)
         piece.position = to_sq
