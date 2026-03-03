@@ -11,3 +11,6 @@ def main() -> None:
     print("\nMove: e2 -> e4")
     board.move_piece("e2", "e4")
     board.print_board()
+
+if __name__ == "__main__":
+    main()
