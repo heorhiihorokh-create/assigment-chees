@@ -52,7 +52,7 @@ class Board:
         for f in FILES:
             self.set_piece(f"{f}2", Pawn("WHITE", f"{f}2"))
             self.set_piece(f"{f}7", Pawn("BLACK", f"{f}7"))
-
+  
         # Rooks
         self.set_piece("a1", Rook("WHITE", "a1"))
         self.set_piece("h1", Rook("WHITE", "h1"))
