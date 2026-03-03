@@ -1,8 +1,8 @@
-from ui.cli import ChessCLI
+from gui.game import ChessGUI
 
 
 def main():
-    game = ChessCLI()
+    game = ChessGUI()
     game.run()
 
 
