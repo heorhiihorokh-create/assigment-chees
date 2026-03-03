@@ -79,6 +79,10 @@ class Board:
         self.set_piece("e1", King("WHITE", "e1"))
         self.set_piece("e8", King("BLACK", "e8"))
 
+
+    # rook tries to jump over pawn -> must fail
+    # board.move_piece("a1", "a3")
+
     def move_piece(self, from_sq: str, to_sq: str) -> None:
         if not is_valid_square(from_sq) or not is_valid_square(to_sq):
             raise ValueError("Invalid square")
@@ -96,6 +100,19 @@ class Board:
         if target_piece is not None and target_piece.color == piece.color:
             raise ValueError("Cannot capture your own piece")
 
+
+        target_piece = self.get_piece(to_sq)
+        
+        # Path blocking for sliding pieces (rook/bishop/queen)
+        sym = getattr(piece, "symbol", "")
+        if sym in ("R", "B", "Q"):
+            between = self.squares_between(from_sq, to_sq)
+            if not between:
+                raise ValueError("Illegal move direction for sliding piece")
+
+            for sq in between:
+                if self.get_piece(sq) is not None:
+                    raise ValueError("Path is blocked")
         # capture logic (no rules yet)
         if target_piece is not None:
             target_piece.is_alive = False
@@ -104,3 +121,37 @@ class Board:
         self.set_piece(to_sq, piece)
         self.set_piece(from_sq, None)
         piece.position = to_sq
+
+
+    def square_to_xy(square: str) -> tuple[int, int]:
+        # a1 -> (0,0), h8 -> (7,7)
+        x = FILES.index(square[0])
+        y = RANKS.index(square[1])
+        return x, y
+
+
+    def xy_to_square(x: int, y: int) -> str:
+        return f"{FILES[x]}{RANKS[y]}"
+    
+
+    def squares_between(self, from_sq: str, to_sq: str) -> list[str]:
+        fx, fy = square_to_xy(from_sq)
+        tx, ty = square_to_xy(to_sq)
+
+        dx = tx - fx
+        dy = ty - fy
+
+        step_x = 0 if dx == 0 else (1 if dx > 0 else -1)
+        step_y = 0 if dy == 0 else (1 if dy > 0 else -1)
+
+        # must be straight or diagonal
+        if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+            return []
+
+        squares: list[str] = []
+        x, y = fx + step_x, fy + step_y
+        while (x, y) != (tx, ty):
+            squares.append(xy_to_square(x, y))
+            x += step_x
+            y += step_y
+        return squares
