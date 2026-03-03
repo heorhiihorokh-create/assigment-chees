@@ -33,3 +33,7 @@ class BaseChessPiece:
     class Pawn(Piece):
         def __init__(self, color: Color, position: str) -> None:
             super().__init__(name="Pawn", symbol="P", color=color, position=position)
+
+    class Rook(Piece):
+        def __init__(self, color: Color, position: str) -> None:
+            super().__init__(name="Rook", symbol="R", color=color, position=position)
