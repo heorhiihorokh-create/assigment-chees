@@ -78,3 +78,26 @@ class Board:
         # Kings
         self.set_piece("e1", King("WHITE", "e1"))
         self.set_piece("e8", King("BLACK", "e8"))
+
+    def move_piece(self, from_sq: str, to_sq: str) -> None:
+        if not is_valid_square(from_sq) or not is_valid_square(to_sq):
+            raise ValueError("Invalid square")
+
+        if from_sq == to_sq:
+            raise ValueError("Cannot move to the same square")
+
+        piece = self.get_piece(from_sq)
+
+        if piece is None:
+            raise ValueError("No piece on source square")
+
+        target_piece = self.get_piece(to_sq)
+
+        # capture logic (no rules yet)
+        if target_piece is not None:
+            target_piece.is_alive = False
+
+        # move
+        self.set_piece(to_sq, piece)
+        self.set_piece(from_sq, None)
+        piece.position = to_sq
