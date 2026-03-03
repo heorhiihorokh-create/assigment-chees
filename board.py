@@ -1,7 +1,8 @@
+import json
+from typing import Generator
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
-
 from pieces import Pawn, Rook, Knight, Bishop, Queen, King
 
 FILES = "abcdefgh"
@@ -153,3 +154,56 @@ class Board:
         self.set_piece(to_sq, piece)
         self.set_piece(from_sq, None)
         piece.position = to_sq
+
+
+
+
+
+
+    def find_piece(self, symbol: str, identifier: int, color: str):
+        """
+        PDF-style find_piece using list comprehension.
+        """
+        matches = [
+            p for p in self.squares.values()
+            if p is not None
+            and getattr(p, "symbol", None) == symbol
+            and getattr(p, "identifier", None) == identifier
+            and getattr(p, "color", None) == color
+        ]
+        return matches[0] if matches else None
+
+    def save_board(self, path: str = "board.txt") -> None:
+        """
+        PDF-style save using json.dumps(self.squares).
+        We serialize pieces via to_dict() when present.
+        """
+        snapshot = {}
+        for sq, piece in self.squares.items():
+            if piece is None:
+                snapshot[sq] = None
+            else:
+                if hasattr(piece, "to_dict"):
+                    snapshot[sq] = piece.to_dict()
+                else:
+                    snapshot[sq] = {
+                        "symbol": getattr(piece, "symbol", "X"),
+                        "color": getattr(piece, "color", "WHITE"),
+                        "position": getattr(piece, "position", sq),
+                        "is_alive": getattr(piece, "is_alive", True),
+                    }
+
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(snapshot) + "\n")
+
+    @staticmethod
+    def board_states(path: str = "board.txt") -> Generator[dict, None, None]:
+        """
+        PDF-style generator: yields board snapshots line by line.
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                yield json.loads(line)
