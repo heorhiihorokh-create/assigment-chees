@@ -1,6 +1,10 @@
 import argparse
 
+from board import Board
 
+b = Board()
+print("pieces:", sum(1 for p in b.squares.values() if p is not None))
+print("sample:", [(k, v) for k, v in b.squares.items() if v is not None][:5])
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cli", action="store_true", help="Run CLI version")
