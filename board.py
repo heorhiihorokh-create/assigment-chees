@@ -84,31 +84,101 @@ class Board:
             raise ValueError("Invalid square")
 
         if from_sq == to_sq:
-            raise ValueError("Cannot move to the same square")
+            raise ValueError("Cannot move to same square")
 
         piece = self.get_piece(from_sq)
-        # Branch by piece type
-        if piece.symbol == "P":
-            pass  # pawn rules (будут позже)
-
-        elif piece.symbol == "N":
-            pass  # knight rules (будут позже)
-
-        elif piece.symbol in ("R", "B", "Q"):
-            pass  # sliding pieces (у тебя уже есть логика ниже)
-
-        elif piece.symbol == "K":
-            pass  # king rules (будут позже)
-
-        else:
-            raise ValueError("Unknown piece type")
-        
         if piece is None:
             raise ValueError("No piece on source square")
 
         target_piece = self.get_piece(to_sq)
 
-        # capture logic (no rules yet)
+        if target_piece is not None and target_piece.color == piece.color:
+            raise ValueError("Cannot capture own piece")
+
+        fx, fy = square_to_xy(from_sq)
+        tx, ty = square_to_xy(to_sq)
+
+        dx = tx - fx
+        dy = ty - fy
+
+        # =========================
+        # PAWN
+        # =========================
+        if piece.symbol == "P":
+            direction = 1 if piece.color == "WHITE" else -1
+            start_rank = 1 if piece.color == "WHITE" else 6
+
+            # forward
+            if dx == 0:
+                if dy == direction:
+                    if target_piece is not None:
+                        raise ValueError("Pawn forward square occupied")
+
+                elif dy == 2 * direction and fy == start_rank:
+                    intermediate = xy_to_square(fx, fy + direction)
+                    if target_piece is not None or self.get_piece(intermediate) is not None:
+                        raise ValueError("Pawn path blocked")
+                else:
+                    raise ValueError("Illegal pawn move")
+
+            # diagonal capture
+            elif abs(dx) == 1 and dy == direction:
+                if target_piece is None:
+                    raise ValueError("Pawn captures diagonally only")
+            else:
+                raise ValueError("Illegal pawn move")
+
+        # =========================
+        # KNIGHT
+        # =========================
+        elif piece.symbol == "N":
+            if not ((abs(dx) == 2 and abs(dy) == 1) or (abs(dx) == 1 and abs(dy) == 2)):
+                raise ValueError("Illegal knight move")
+
+        # =========================
+        # KING
+        # =========================
+        elif piece.symbol == "K":
+            if max(abs(dx), abs(dy)) != 1:
+                raise ValueError("Illegal king move")
+
+        # =========================
+        # ROOK
+        # =========================
+        elif piece.symbol == "R":
+            if not (dx == 0 or dy == 0):
+                raise ValueError("Illegal rook move")
+
+            for sq in self.squares_between(from_sq, to_sq):
+                if self.get_piece(sq) is not None:
+                    raise ValueError("Path blocked")
+
+        # =========================
+        # BISHOP
+        # =========================
+        elif piece.symbol == "B":
+            if abs(dx) != abs(dy):
+                raise ValueError("Illegal bishop move")
+
+            for sq in self.squares_between(from_sq, to_sq):
+                if self.get_piece(sq) is not None:
+                    raise ValueError("Path blocked")
+
+        # =========================
+        # QUEEN
+        # =========================
+        elif piece.symbol == "Q":
+            if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+                raise ValueError("Illegal queen move")
+
+            for sq in self.squares_between(from_sq, to_sq):
+                if self.get_piece(sq) is not None:
+                    raise ValueError("Path blocked")
+
+        else:
+            raise ValueError("Unknown piece type")
+
+        # capture
         if target_piece is not None:
             target_piece.is_alive = False
 
