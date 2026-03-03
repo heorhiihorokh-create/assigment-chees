@@ -1,4 +1,3 @@
-from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Literal
 
@@ -27,30 +26,30 @@ class Piece:
 
 
 class Pawn(Piece):
-    def __init__(self, color: Color, position: str) -> None:
-        super().__init__(name="Pawn", symbol="P", color=color, position=position)
+    def __init__(self, color: Color, position: str):
+        super().__init__("Pawn", "P", color, position)
 
 
 class Rook(Piece):
-    def __init__(self, color: Color, position: str) -> None:
-        super().__init__(name="Rook", symbol="R", color=color, position=position)
+    def __init__(self, color: Color, position: str):
+        super().__init__("Rook", "R", color, position)
 
 
 class Knight(Piece):
-    def __init__(self, color: Color, position: str) -> None:
-        super().__init__(name="Knight", symbol="N", color=color, position=position)
+    def __init__(self, color: Color, position: str):
+        super().__init__("Knight", "N", color, position)
 
 
 class Bishop(Piece):
-    def __init__(self, color: Color, position: str) -> None:
-        super().__init__(name="Bishop", symbol="B", color=color, position=position)
+    def __init__(self, color: Color, position: str):
+        super().__init__("Bishop", "B", color, position)
 
 
 class Queen(Piece):
-    def __init__(self, color: Color, position: str) -> None:
-        super().__init__(name="Queen", symbol="Q", color=color, position=position)
+    def __init__(self, color: Color, position: str):
+        super().__init__("Queen", "Q", color, position)
 
 
 class King(Piece):
-    def __init__(self, color: Color, position: str) -> None:
-        super().__init__(name="King", symbol="K", color=color, position=position)
+    def __init__(self, color: Color, position: str):
+        super().__init__("King", "K", color, position)

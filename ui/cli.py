@@ -5,10 +5,6 @@ class ChessCLI:
     def __init__(self):
         self.board = Board()
         self.board.setup_board()
-        self.current_turn = "WHITE"
-
-    def switch_turn(self):
-        self.current_turn = "BLACK" if self.current_turn == "WHITE" else "WHITE"
 
     def run(self):
         print("=== CHESS GAME ===")
@@ -17,28 +13,24 @@ class ChessCLI:
 
         while True:
             self.board.print_board()
-            print(f"\nTurn: {self.current_turn}")
+            print(f"\nTurn: {self.board.current_turn}")
 
             move_input = input("Move: ").strip()
 
             if move_input.lower() == "exit":
                 break
 
+            parts = move_input.split()
+
+            if len(parts) != 2:
+                print("Enter move in format: e2 e4\n")
+                continue
+
+            from_sq, to_sq = parts
+
             try:
-                from_sq, to_sq = move_input.split()
-
-                piece = self.board.get_piece(from_sq)
-                if piece is None:
-                    raise ValueError("No piece on that square")
-
-                if piece.color != self.current_turn:
-                    raise ValueError("Not your turn")
-
                 self.board.move_piece(from_sq, to_sq)
-
-                self.switch_turn()
-
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Error: {e}\n")
 
         print("Game ended.")

@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import Dict, Optional
 from pieces import Pawn, Rook, Knight, Bishop, Queen, King
 
@@ -10,11 +9,11 @@ def is_valid_square(square: str) -> bool:
     return len(square) == 2 and square[0] in FILES and square[1] in RANKS
 
 
-def square_to_xy(square: str) -> tuple[int, int]:
+def square_to_xy(square: str):
     return FILES.index(square[0]), RANKS.index(square[1])
 
 
-def xy_to_square(x: int, y: int) -> str:
+def xy_to_square(x: int, y: int):
     return f"{FILES[x]}{RANKS[y]}"
 
 
@@ -23,6 +22,7 @@ class Board:
         self.squares: Dict[str, Optional[object]] = {
             f"{f}{r}": None for r in RANKS for f in FILES
         }
+        self.current_turn = "WHITE"
 
     def get_piece(self, square: str):
         return self.squares[square]
@@ -34,8 +34,7 @@ class Board:
         for r in reversed(RANKS):
             row = []
             for f in FILES:
-                sq = f"{f}{r}"
-                p = self.squares[sq]
+                p = self.squares[f"{f}{r}"]
                 if p is None:
                     row.append(".")
                 else:
@@ -63,12 +62,11 @@ class Board:
             color = "WHITE" if square[1] in "12" else "BLACK"
             self.set_piece(square, cls(color, square))
 
-    def squares_between(self, from_sq: str, to_sq: str):
+    def squares_between(self, from_sq, to_sq):
         fx, fy = square_to_xy(from_sq)
         tx, ty = square_to_xy(to_sq)
 
-        dx = tx - fx
-        dy = ty - fy
+        dx, dy = tx - fx, ty - fy
 
         if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
             return []
@@ -86,7 +84,7 @@ class Board:
 
         return squares
 
-    def move_piece(self, from_sq: str, to_sq: str):
+    def move_piece(self, from_sq, to_sq):
         if not is_valid_square(from_sq) or not is_valid_square(to_sq):
             raise ValueError("Invalid square")
 
@@ -94,17 +92,18 @@ class Board:
         if piece is None:
             raise ValueError("No piece on source square")
 
-        target = self.get_piece(to_sq)
+        if piece.color != self.current_turn:
+            raise ValueError("Not your turn")
 
+        target = self.get_piece(to_sq)
         if target and target.color == piece.color:
             raise ValueError("Cannot capture own piece")
 
         fx, fy = square_to_xy(from_sq)
         tx, ty = square_to_xy(to_sq)
-
         dx, dy = tx - fx, ty - fy
 
-        # PAWN
+        # Pawn
         if piece.symbol == "P":
             direction = 1 if piece.color == "WHITE" else -1
             start = 1 if piece.color == "WHITE" else 6
@@ -123,31 +122,26 @@ class Board:
             else:
                 raise ValueError("Illegal pawn move")
 
-        # KNIGHT
         elif piece.symbol == "N":
             if not ((abs(dx) == 2 and abs(dy) == 1) or (abs(dx) == 1 and abs(dy) == 2)):
                 raise ValueError("Illegal knight move")
 
-        # KING
         elif piece.symbol == "K":
             if max(abs(dx), abs(dy)) != 1:
                 raise ValueError("Illegal king move")
 
-        # ROOK
         elif piece.symbol == "R":
             if not (dx == 0 or dy == 0):
                 raise ValueError("Illegal rook move")
             if any(self.get_piece(sq) for sq in self.squares_between(from_sq, to_sq)):
                 raise ValueError("Path blocked")
 
-        # BISHOP
         elif piece.symbol == "B":
             if abs(dx) != abs(dy):
                 raise ValueError("Illegal bishop move")
             if any(self.get_piece(sq) for sq in self.squares_between(from_sq, to_sq)):
                 raise ValueError("Path blocked")
 
-        # QUEEN
         elif piece.symbol == "Q":
             if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
                 raise ValueError("Illegal queen move")
@@ -160,3 +154,5 @@ class Board:
         self.set_piece(to_sq, piece)
         self.set_piece(from_sq, None)
         piece.position = to_sq
+
+        self.current_turn = "BLACK" if self.current_turn == "WHITE" else "WHITE"
