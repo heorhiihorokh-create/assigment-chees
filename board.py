@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
+
 from pieces import Pawn, Rook, Knight, Bishop, Queen, King
 
 FILES = "abcdefgh"
@@ -9,6 +10,17 @@ RANKS = "12345678"
 
 def is_valid_square(square: str) -> bool:
     return isinstance(square, str) and len(square) == 2 and square[0] in FILES and square[1] in RANKS
+
+
+def square_to_xy(square: str) -> tuple[int, int]:
+    # a1 -> (0,0), h8 -> (7,7)
+    x = FILES.index(square[0])
+    y = RANKS.index(square[1])
+    return x, y
+
+
+def xy_to_square(x: int, y: int) -> str:
+    return f"{FILES[x]}{RANKS[y]}"
 
 
 @dataclass(frozen=True)
@@ -52,7 +64,7 @@ class Board:
         for f in FILES:
             self.set_piece(f"{f}2", Pawn("WHITE", f"{f}2"))
             self.set_piece(f"{f}7", Pawn("BLACK", f"{f}7"))
-  
+
         # Rooks
         self.set_piece("a1", Rook("WHITE", "a1"))
         self.set_piece("h1", Rook("WHITE", "h1"))
@@ -78,3 +90,66 @@ class Board:
         # Kings
         self.set_piece("e1", King("WHITE", "e1"))
         self.set_piece("e8", King("BLACK", "e8"))
+
+    def squares_between(self, from_sq: str, to_sq: str) -> list[str]:
+        """
+        Returns squares strictly between from_sq and to_sq for straight/diagonal moves.
+        If not straight/diagonal, returns [].
+        """
+        fx, fy = square_to_xy(from_sq)
+        tx, ty = square_to_xy(to_sq)
+
+        dx = tx - fx
+        dy = ty - fy
+
+        # straight or diagonal only
+        if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+            return []
+
+        step_x = 0 if dx == 0 else (1 if dx > 0 else -1)
+        step_y = 0 if dy == 0 else (1 if dy > 0 else -1)
+
+        squares: list[str] = []
+        x, y = fx + step_x, fy + step_y
+        while (x, y) != (tx, ty):
+            squares.append(xy_to_square(x, y))
+            x += step_x
+            y += step_y
+        return squares
+
+    def move_piece(self, from_sq: str, to_sq: str) -> None:
+        if not is_valid_square(from_sq):
+            raise ValueError(f"Invalid source square: {from_sq}")
+        if not is_valid_square(to_sq):
+            raise ValueError(f"Invalid target square: {to_sq}")
+        if from_sq == to_sq:
+            raise ValueError("Source and target squares are the same")
+
+        piece = self.get_piece(from_sq)
+        if piece is None:
+            raise ValueError(f"No piece on {from_sq}")
+
+        target_piece = self.get_piece(to_sq)
+
+        # Prevent capturing own piece
+        if target_piece is not None and target_piece.color == piece.color:
+            raise ValueError("Cannot capture your own piece")
+
+        # Path blocking for sliding pieces (rook/bishop/queen)
+        sym = getattr(piece, "symbol", "")
+        if sym in ("R", "B", "Q"):
+            between = self.squares_between(from_sq, to_sq)
+            if not between:
+                raise ValueError("Illegal move direction for sliding piece")
+            for sq in between:
+                if self.get_piece(sq) is not None:
+                    raise ValueError("Path is blocked")
+
+        # Capture
+        if target_piece is not None:
+            target_piece.is_alive = False
+
+        # Move
+        self.set_piece(to_sq, piece)
+        self.set_piece(from_sq, None)
+        piece.position = to_sq
