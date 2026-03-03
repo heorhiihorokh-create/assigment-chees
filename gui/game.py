@@ -1,12 +1,15 @@
 import pygame
 from board import Board
 
-WIDTH = 640
-HEIGHT = 640
-SQUARE = WIDTH // 8
+WIDTH = 800
+HEIGHT = 800
+ROWS = 8
+COLS = 8
+SQUARE = WIDTH // COLS
 
-WHITE = (240, 217, 181)
-BROWN = (181, 136, 99)
+LIGHT = (240, 217, 181)
+DARK = (181, 136, 99)
+HIGHLIGHT = (246, 246, 105)
 
 
 class ChessGUI:
@@ -18,63 +21,73 @@ class ChessGUI:
         self.board = Board()
         self.board.setup_board()
 
-        self.selected = None
+        self.selected_square = None
+        self.turn = "WHITE"
 
         self.images = {}
         self.load_images()
 
     def load_images(self):
-        mapping = {
-            "WHITE_P": "wP.svg",
-            "WHITE_R": "wR.svg",
-            "WHITE_N": "wN.svg",
-            "WHITE_B": "wB.svg",
-            "WHITE_Q": "wQ.svg",
-            "WHITE_K": "wK.svg",
-            "BLACK_P": "bP.svg",
-            "BLACK_R": "bR.svg",
-            "BLACK_N": "bN.svg",
-            "BLACK_B": "bB.svg",
-            "BLACK_Q": "bQ.svg",
-            "BLACK_K": "bK.svg",
-        }
+        pieces = ["P", "R", "N", "B", "Q", "K"]
+        colors = ["WHITE", "BLACK"]
 
-        for key, filename in mapping.items():
-            image = pygame.image.load(f"assets/{filename}")
-            self.images[key] = pygame.transform.scale(image, (SQUARE, SQUARE))
-
+        for color in colors:
+            for piece in pieces:
+                filename = f"{color[0].lower()}{piece.lower()}.png"
+                path = f"assets/{filename}"
+                image = pygame.image.load(path)
+                image = pygame.transform.scale(image, (SQUARE, SQUARE))
+                self.images[f"{color}_{piece}"] = image
 
     def draw_board(self):
-        for r in range(8):
-            for c in range(8):
-                color = WHITE if (r + c) % 2 == 0 else BROWN
-                pygame.draw.rect(self.screen, color, (c * SQUARE, r * SQUARE, SQUARE, SQUARE))
+        for row in range(ROWS):
+            for col in range(COLS):
+                color = LIGHT if (row + col) % 2 == 0 else DARK
+                pygame.draw.rect(
+                    self.screen,
+                    color,
+                    (col * SQUARE, row * SQUARE, SQUARE, SQUARE),
+                )
+
+        if self.selected_square:
+            col = ord(self.selected_square[0]) - ord("a")
+            row = 8 - int(self.selected_square[1])
+            pygame.draw.rect(
+                self.screen,
+                HIGHLIGHT,
+                (col * SQUARE, row * SQUARE, SQUARE, SQUARE),
+            )
 
     def draw_pieces(self):
         for square, piece in self.board.squares.items():
             if piece:
-                col = "WHITE" if piece.color == "WHITE" else "BLACK"
-                key = f"{col}_{piece.symbol}"
-                x = ord(square[0]) - ord('a')
-                y = 7 - (int(square[1]) - 1)
-                self.screen.blit(self.images[key], (x * SQUARE, y * SQUARE))
+                col = ord(square[0]) - ord("a")
+                row = 8 - int(square[1])
+
+                key = f"{piece.color}_{piece.symbol}"
+                image = self.images.get(key)
+
+                if image:
+                    self.screen.blit(
+                        image,
+                        (col * SQUARE, row * SQUARE),
+                    )
 
     def get_square_from_mouse(self, pos):
         x, y = pos
         col = x // SQUARE
         row = y // SQUARE
-        file = chr(ord('a') + col)
+        file = chr(ord("a") + col)
         rank = str(8 - row)
         return file + rank
 
     def run(self):
         running = True
-        clock = pygame.time.Clock()
 
         while running:
-            clock.tick(60)
             self.draw_board()
             self.draw_pieces()
+            pygame.display.flip()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -83,17 +96,17 @@ class ChessGUI:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     square = self.get_square_from_mouse(pygame.mouse.get_pos())
 
-                    if self.selected is None:
+                    if self.selected_square is None:
                         piece = self.board.get_piece(square)
-                        if piece and piece.color == self.board.current_turn:
-                            self.selected = square
+                        if piece and piece.color == self.turn:
+                            self.selected_square = square
                     else:
                         try:
-                            self.board.move_piece(self.selected, square)
-                        except:
-                            pass
-                        self.selected = None
+                            self.board.move_piece(self.selected_square, square)
+                            self.turn = "BLACK" if self.turn == "WHITE" else "WHITE"
+                        except Exception as e:
+                            print("Illegal move:", e)
 
-            pygame.display.flip()
+                        self.selected_square = None
 
         pygame.quit()
