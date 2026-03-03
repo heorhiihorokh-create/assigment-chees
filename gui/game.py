@@ -24,14 +24,25 @@ class ChessGUI:
         self.load_images()
 
     def load_images(self):
-        pieces = ["P", "R", "N", "B", "Q", "K"]
-        colors = ["WHITE", "BLACK"]
+        mapping = {
+            "WHITE_P": "wP.svg",
+            "WHITE_R": "wR.svg",
+            "WHITE_N": "wN.svg",
+            "WHITE_B": "wB.svg",
+            "WHITE_Q": "wQ.svg",
+            "WHITE_K": "wK.svg",
+            "BLACK_P": "bP.svg",
+            "BLACK_R": "bR.svg",
+            "BLACK_N": "bN.svg",
+            "BLACK_B": "bB.svg",
+            "BLACK_Q": "bQ.svg",
+            "BLACK_K": "bK.svg",
+        }
 
-        for color in colors:
-            for p in pieces:
-                name = f"{color}_{p}"
-                image = pygame.image.load(f"assets/{name}.png")
-                self.images[name] = pygame.transform.scale(image, (SQUARE, SQUARE))
+        for key, filename in mapping.items():
+            image = pygame.image.load(f"assets/{filename}")
+            self.images[key] = pygame.transform.scale(image, (SQUARE, SQUARE))
+
 
     def draw_board(self):
         for r in range(8):
