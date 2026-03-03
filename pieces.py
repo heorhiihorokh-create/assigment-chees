@@ -45,3 +45,7 @@ class BaseChessPiece:
     class Bishop(Piece):
         def __init__(self, color: Color, position: str) -> None:
             super().__init__(name="Bishop", symbol="B", color=color, position=position)
+
+    class Queen(Piece):
+        def __init__(self, color: Color, position: str) -> None:
+            super().__init__(name="Queen", symbol="Q", color=color, position=position)
