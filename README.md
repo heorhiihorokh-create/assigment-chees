@@ -1,14 +1,15 @@
-<!-- Final Submission
+## Final Submission
 
-This version implements all required OOP structures, board state persistence (generator-based save/load), and a complete interactive GUI.
-The interface includes hover highlighting, legal move visualization, capture effects, and an animated victory screen.
-All board states are appended to board.txt after each move in compliance with the assignment requirements. -->
+This final release includes:
+- Fully interactive chess GUI with hover lift effects
+- Legal move indicators (green dots)
+- Capture highlights (red squares)
+- Particle animation for captures (shards)
+- Victory screen with confetti and “Powered by Hirokiory”
+- Board state persistence appended to `board.txt` (generator-based), as required by the assignment PDF
 
-
-# assigment-chees
-
-Simple chess board scaffold in Python.
-
-## Run
+### Run
 ```bash
 py main.py
+# CLI mode:
+py main.py --cli
