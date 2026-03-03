@@ -1,16 +1,10 @@
-#main
-from board import Board
+from ui.cli import ChessCLI
 
-def main() -> None:
-    board = Board()
-    board.setup_board()
 
-    print("Initial position:")
-    board.print_board()
+def main():
+    game = ChessCLI()
+    game.run()
 
-    print("\nMove: e2 -> e4")
-    board.move_piece("e2", "e4")
-    board.print_board()
 
 if __name__ == "__main__":
     main()
