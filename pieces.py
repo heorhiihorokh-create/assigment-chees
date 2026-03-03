@@ -49,3 +49,7 @@ class BaseChessPiece:
     class Queen(Piece):
         def __init__(self, color: Color, position: str) -> None:
             super().__init__(name="Queen", symbol="Q", color=color, position=position)
+
+    class King(Piece):
+        def __init__(self, color: Color, position: str) -> None:
+            super().__init__(name="King", symbol="K", color=color, position=position)
