@@ -29,3 +29,7 @@ class BaseChessPiece:
 
         def __repr__(self) -> str:
             return f"{self.symbol}({self.color},{self.position})"
+        
+    class Pawn(Piece):
+        def __init__(self, color: Color, position: str) -> None:
+            super().__init__(name="Pawn", symbol="P", color=color, position=position)
