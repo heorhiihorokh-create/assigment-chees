@@ -32,12 +32,16 @@ class Board:
         self.squares[square] = piece
 
     def print_board(self) -> None:
-        # simple view (we'll improve later)
         for r in reversed(RANKS):
             row = []
             for f in FILES:
                 sq = f"{f}{r}"
                 p = self.squares[sq]
-                row.append("." if p is None else "X")
+                if p is None:
+                    row.append(".")
+                else:
+                    sym = getattr(p, "symbol", "X")
+                    color = getattr(p, "color", "WHITE")
+                    row.append(sym.upper() if color == "WHITE" else sym.lower())
             print(" ".join(row), f"  {r}")
         print(" ".join(FILES))
