@@ -1,9 +1,10 @@
-import json
-from typing import Generator
 from __future__ import annotations
+import json
+from typing import Iterator
 from dataclasses import dataclass
-from typing import Dict, Optional
-from pieces import Pawn, Rook, Knight, Bishop, Queen, King
+from typing import Any, Dict, Generator, List, Optional, Tuple
+
+from pieces import Bishop, King, Knight, Pawn, Queen, Rook, Piece
 
 FILES = "abcdefgh"
 RANKS = "12345678"
@@ -31,179 +32,285 @@ class Move:
 
 
 class Board:
+    """
+    Board is the single source of truth for pieces placement.
+    Stores Piece objects (OOP requirement).
+    Provides GUI/CLI-compatible helpers so nothing crashes.
+    """
+
+    # expose helpers for Piece methods
+    square_to_xy = staticmethod(square_to_xy)
+    xy_to_square = staticmethod(xy_to_square)
+
     def __init__(self) -> None:
-        # a1..h8 -> piece or None
-        self.squares: Dict[str, Optional[object]] = {f"{f}{r}": None for r in RANKS for f in FILES}
+        # squares: "a1".."h8" -> Piece | None
+        self.squares: Dict[str, Optional[Piece]] = {f"{f}{r}": None for f in FILES for r in RANKS}
+        self.turn: str = "white"
+        self.reset()
 
-    def get_piece(self, square: str):
-        if not is_valid_square(square):
-            raise ValueError(f"Invalid square: {square}")
-        return self.squares[square]
+    # ---------------- core utils ----------------
 
-    def set_piece(self, square: str, piece) -> None:
-        if not is_valid_square(square):
-            raise ValueError(f"Invalid square: {square}")
-        self.squares[square] = piece
+    def in_bounds(self, x: int, y: int) -> bool:
+        return 0 <= x < 8 and 0 <= y < 8
 
-    def print_board(self) -> None:
-        for r in reversed(RANKS):
-            row = []
-            for f in FILES:
-                sq = f"{f}{r}"
-                p = self.squares[sq]
-                if p is None:
-                    row.append(".")
-                else:
-                    sym = getattr(p, "symbol", "X")
-                    color = getattr(p, "color", "WHITE")
-                    row.append(sym.upper() if color == "WHITE" else sym.lower())
-            print(" ".join(row), f"  {r}")
-        print(" ".join(FILES))
+    def reset(self) -> None:
+        """Set the initial chess position."""
+        for sq in self.squares:
+            self.squares[sq] = None
 
-    def setup_board(self) -> None:
-        # Pawns
+        # pawns
         for f in FILES:
-            self.set_piece(f"{f}2", Pawn("WHITE", f"{f}2"))
-            self.set_piece(f"{f}7", Pawn("BLACK", f"{f}7"))
+            self.squares[f"{f}2"] = Pawn("white")
+            self.squares[f"{f}7"] = Pawn("black")
 
-        # Rooks
-        self.set_piece("a1", Rook("WHITE", "a1"))
-        self.set_piece("h1", Rook("WHITE", "h1"))
-        self.set_piece("a8", Rook("BLACK", "a8"))
-        self.set_piece("h8", Rook("BLACK", "h8"))
+        # back ranks
+        self.squares["a1"] = Rook("white")
+        self.squares["h1"] = Rook("white")
+        self.squares["b1"] = Knight("white")
+        self.squares["g1"] = Knight("white")
+        self.squares["c1"] = Bishop("white")
+        self.squares["f1"] = Bishop("white")
+        self.squares["d1"] = Queen("white")
+        self.squares["e1"] = King("white")
 
-        # Knights
-        self.set_piece("b1", Knight("WHITE", "b1"))
-        self.set_piece("g1", Knight("WHITE", "g1"))
-        self.set_piece("b8", Knight("BLACK", "b8"))
-        self.set_piece("g8", Knight("BLACK", "g8"))
+        self.squares["a8"] = Rook("black")
+        self.squares["h8"] = Rook("black")
+        self.squares["b8"] = Knight("black")
+        self.squares["g8"] = Knight("black")
+        self.squares["c8"] = Bishop("black")
+        self.squares["f8"] = Bishop("black")
+        self.squares["d8"] = Queen("black")
+        self.squares["e8"] = King("black")
 
-        # Bishops
-        self.set_piece("c1", Bishop("WHITE", "c1"))
-        self.set_piece("f1", Bishop("WHITE", "f1"))
-        self.set_piece("c8", Bishop("BLACK", "c8"))
-        self.set_piece("f8", Bishop("BLACK", "f8"))
+        self.turn = "white"
 
-        # Queens
-        self.set_piece("d1", Queen("WHITE", "d1"))
-        self.set_piece("d8", Queen("BLACK", "d8"))
+    def find_piece(self, piece_type: type[Piece], color: str) -> Optional[str]:
+        """Return square of first matching piece, else None."""
+        for sq, p in self.squares.items():
+            if p is not None and isinstance(p, piece_type) and getattr(p, "color", None) == color:
+                return sq
+        return None
 
-        # Kings
-        self.set_piece("e1", King("WHITE", "e1"))
-        self.set_piece("e8", King("BLACK", "e8"))
+    # ---------------- move generation helpers ----------------
 
-    def squares_between(self, from_sq: str, to_sq: str) -> list[str]:
+    def ray_moves(self, from_sq: str, color: str, directions: List[Tuple[int, int]]) -> List[str]:
         """
-        Returns squares strictly between from_sq and to_sq for straight/diagonal moves.
-        If not straight/diagonal, returns [].
+        Sliding moves for rook/bishop/queen.
+        Pseudo-legal: ignores check/checkmate. Never crashes.
         """
-        fx, fy = square_to_xy(from_sq)
-        tx, ty = square_to_xy(to_sq)
-
-        dx = tx - fx
-        dy = ty - fy
-
-        # straight or diagonal only
-        if not (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+        if not is_valid_square(from_sq):
             return []
 
-        step_x = 0 if dx == 0 else (1 if dx > 0 else -1)
-        step_y = 0 if dy == 0 else (1 if dy > 0 else -1)
+        x, y = square_to_xy(from_sq)
+        out: List[str] = []
 
-        squares: list[str] = []
-        x, y = fx + step_x, fy + step_y
-        while (x, y) != (tx, ty):
-            squares.append(xy_to_square(x, y))
-            x += step_x
-            y += step_y
-        return squares
+        for dx, dy in directions:
+            cx, cy = x + dx, y + dy
+            while self.in_bounds(cx, cy):
+                to_sq = xy_to_square(cx, cy)
+                target = self.squares.get(to_sq)
 
-    def move_piece(self, from_sq: str, to_sq: str) -> None:
-        if not is_valid_square(from_sq):
-            raise ValueError(f"Invalid source square: {from_sq}")
-        if not is_valid_square(to_sq):
-            raise ValueError(f"Invalid target square: {to_sq}")
-        if from_sq == to_sq:
-            raise ValueError("Source and target squares are the same")
+                if target is None:
+                    out.append(to_sq)
+                else:
+                    if getattr(target, "color", None) != color:
+                        out.append(to_sq)
+                    break
 
-        piece = self.get_piece(from_sq)
+                cx += dx
+                cy += dy
+
+        return out
+
+    def get_legal_moves(self, square: str) -> List[str]:
+        """
+        GUI expects this name.
+        For now: pseudo-legal moves only, but NEVER crash.
+        """
+        if not is_valid_square(square):
+            return []
+
+        piece = self.squares.get(square)
         if piece is None:
-            raise ValueError(f"No piece on {from_sq}")
+            return []
 
-        target_piece = self.get_piece(to_sq)
+        # enforce turn (safe default for GUI)
+        if getattr(piece, "color", None) != self.turn:
+            return []
 
-        # Prevent capturing own piece
-        if target_piece is not None and target_piece.color == piece.color:
-            raise ValueError("Cannot capture your own piece")
+        try:
+            moves = piece.get_moves(self, square)  # type: ignore[attr-defined]
+        except Exception:
+            return []
 
-        # Path blocking for sliding pieces (rook/bishop/queen)
-        sym = getattr(piece, "symbol", "")
-        if sym in ("R", "B", "Q"):
-            between = self.squares_between(from_sq, to_sq)
-            if not between:
-                raise ValueError("Illegal move direction for sliding piece")
-            for sq in between:
-                if self.get_piece(sq) is not None:
-                    raise ValueError("Path is blocked")
+        # sanitize output
+        return [m for m in moves if is_valid_square(m)]
 
-        # Capture
-        if target_piece is not None:
-            target_piece.is_alive = False
-
-        # Move
-        self.set_piece(to_sq, piece)
-        self.set_piece(from_sq, None)
-        piece.position = to_sq
-
-
-
-
-
-
-    def find_piece(self, symbol: str, identifier: int, color: str):
+    def move(self, from_sq: str, to_sq: str) -> bool:
         """
-        PDF-style find_piece using list comprehension.
+        Safe move executor: only allows to_sq in get_legal_moves(from_sq).
+        Returns True if moved.
         """
-        matches = [
-            p for p in self.squares.values()
-            if p is not None
-            and getattr(p, "symbol", None) == symbol
-            and getattr(p, "identifier", None) == identifier
-            and getattr(p, "color", None) == color
-        ]
-        return matches[0] if matches else None
+        if not (is_valid_square(from_sq) and is_valid_square(to_sq)):
+            return False
+
+        if to_sq not in self.get_legal_moves(from_sq):
+            return False
+
+        piece = self.squares.get(from_sq)
+        if piece is None:
+            return False
+
+        self.squares[to_sq] = piece
+        self.squares[from_sq] = None
+
+        self.turn = "black" if self.turn == "white" else "white"
+        return True
+
+    # ---------------- persistence (PDF-style) ----------------
+
+    def save(self) -> Generator[dict[str, Any], None, None]:
+        """Generator that yields a serializable state."""
+        pieces_payload: List[dict[str, Any]] = []
+        for sq, p in self.squares.items():
+            if p is None:
+                continue
+            pieces_payload.append(
+                {
+                    "sq": sq,
+                    "type": type(p).__name__,  # "Pawn", "King", ...
+                    "color": p.color,
+                }
+            )
+
+        yield {
+            "turn": self.turn,
+            "pieces": pieces_payload,
+        }
+
+    def load(self, state: dict[str, Any]) -> Generator[None, None, None]:
+        """Generator that restores board from a state dict."""
+        for sq in self.squares:
+            self.squares[sq] = None
+
+        self.turn = state.get("turn", "white")
+
+        type_map: Dict[str, type[Piece]] = {
+            "Pawn": Pawn,
+            "Rook": Rook,
+            "Knight": Knight,
+            "Bishop": Bishop,
+            "Queen": Queen,
+            "King": King,
+        }
+
+        for item in state.get("pieces", []):
+            sq = item.get("sq")
+            tname = item.get("type")
+            color = item.get("color")
+
+            if not (is_valid_square(sq) and isinstance(tname, str) and isinstance(color, str)):
+                continue
+
+            cls = type_map.get(tname)
+            if cls is None:
+                continue
+
+            self.squares[sq] = cls(color)
+
+        yield None
+
+    # ---------------- GUI compatibility layer ----------------
+    # (This is what prevents crashes when GUI expects different names.)
+
+    def setup_board(self) -> None:
+        """GUI compatibility alias."""
+        self.reset()
+
+    def get_piece(self, square: str) -> Optional[Piece]:
+        """GUI compatibility: return piece at square or None."""
+        if not is_valid_square(square):
+            return None
+        return self.squares.get(square)
+
+    def set_piece(self, square: str, piece: Optional[Piece]) -> None:
+        """GUI compatibility: set piece (or None) to a square."""
+        if not is_valid_square(square):
+            return
+        self.squares[square] = piece
+
+    def remove_piece(self, square: str) -> None:
+        """GUI compatibility: remove piece from square."""
+        if not is_valid_square(square):
+            return
+        self.squares[square] = None
+
+    def move_piece(self, from_sq: str, to_sq: str) -> bool:
+        """
+        Some GUIs call move_piece(). Delegate to move().
+        """
+        return self.move(from_sq, to_sq)
+
+    def piece_to_key(self, piece: Any) -> Optional[str]:
+        """
+        GUI helper:
+        - if GUI still expects 'wP' style keys, it can call this.
+        - returns None if piece is not drawable.
+        """
+        if piece is None:
+            return None
+        key = getattr(piece, "image_key", None)
+        return key if isinstance(key, str) else None
+    
+    def print_board(self) -> None:
+        """
+        Prints the board row-first (8 -> 1) like in the PDF example.
+        :contentReference[oaicite:1]{index=1}
+        """
+        for r in reversed(RANKS):
+            row = [self.squares[f"{f}{r}"] for f in FILES]
+            print(row)
+
+    def is_square_empty(self, square: str) -> bool:
+        """PDF helper."""
+        return self.get_piece(square) is None
+
+    def kill_piece(self, square: str) -> Optional[Piece]:
+        """
+        Mark piece as dead if it supports die(); remove from board.
+        :contentReference[oaicite:2]{index=2}
+        """
+        p = self.get_piece(square)
+        if p is None:
+            return None
+        die = getattr(p, "die", None)
+        if callable(die):
+            die()
+        self.remove_piece(square)
+        return p
 
     def save_board(self, path: str = "board.txt") -> None:
         """
-        PDF-style save using json.dumps(self.squares).
-        We serialize pieces via to_dict() when present.
+        Append one JSON line (state) to board.txt (NDJSON).
+        PDF asks to save states and append.
+        :contentReference[oaicite:3]{index=3}
         """
-        snapshot = {}
-        for sq, piece in self.squares.items():
-            if piece is None:
-                snapshot[sq] = None
-            else:
-                if hasattr(piece, "to_dict"):
-                    snapshot[sq] = piece.to_dict()
-                else:
-                    snapshot[sq] = {
-                        "symbol": getattr(piece, "symbol", "X"),
-                        "color": getattr(piece, "color", "WHITE"),
-                        "position": getattr(piece, "position", sq),
-                        "is_alive": getattr(piece, "is_alive", True),
-                    }
-
+        state = next(self.save())
         with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(snapshot) + "\n")
+            f.write(json.dumps(state, ensure_ascii=False) + "\n")
 
     @staticmethod
-    def board_states(path: str = "board.txt") -> Generator[dict, None, None]:
+    def read_states(path: str = "board.txt") -> Iterator[dict]:
         """
-        PDF-style generator: yields board snapshots line by line.
+        Generator that yields one saved state at a time (line-by-line).
+        :contentReference[oaicite:4]{index=4}
         """
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                yield json.loads(line)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    yield json.loads(line)
+        except FileNotFoundError:
+            return
