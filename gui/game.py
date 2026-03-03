@@ -1,310 +1,366 @@
-import pygame
-import time
+from __future__ import annotations
+
+import os
+import math
 import random
-from board import Board
+import pygame
+from typing import Optional, List, Tuple
 
-WIDTH = 800
-PANEL = 80
-HEIGHT = WIDTH + PANEL
-SQUARE = WIDTH // 8
+from board import Board, FILES, RANKS
 
-LIGHT = (240, 217, 181)
-DARK = (181, 136, 99)
 
-HOVER = (255, 255, 255, 40)    # RGBA overlay
-SELECT = (255, 255, 0, 70)     # RGBA overlay
+Vec2 = pygame.math.Vector2
 
-GREEN_DOT = (60, 180, 75)
-RED = (220, 50, 50)
+
+class Particle:
+    def __init__(self, pos: Tuple[float, float]) -> None:
+        self.pos = Vec2(pos)
+        ang = random.uniform(0, math.tau)
+        speed = random.uniform(140, 320)
+        self.vel = Vec2(math.cos(ang), math.sin(ang)) * speed
+        self.life = random.uniform(0.35, 0.7)
+        self.age = 0.0
+        self.size = random.randint(2, 5)
+
+    def update(self, dt: float) -> None:
+        self.age += dt
+        self.vel.y += 520 * dt  # gravity
+        self.pos += self.vel * dt
+
+    @property
+    def dead(self) -> bool:
+        return self.age >= self.life
 
 
 class Confetti:
-    def __init__(self):
-        self.x = random.randint(0, WIDTH)
-        self.y = random.randint(-HEIGHT, 0)
-        self.speed = random.randint(3, 8)
-        self.color = random.choice([
-            (255, 0, 0),
-            (0, 255, 0),
-            (0, 140, 255),
-            (255, 255, 0),
-            (255, 0, 255),
-            (0, 255, 255),
-        ])
-        self.r = random.randint(2, 4)
+    def __init__(self, w: int, h: int) -> None:
+        self.w, self.h = w, h
+        self.x = random.uniform(0, w)
+        self.y = random.uniform(-h, 0)
+        self.vy = random.uniform(120, 260)
+        self.vx = random.uniform(-40, 40)
+        self.size = random.randint(3, 7)
+        self.life = random.uniform(1.2, 2.6)
+        self.age = 0.0
 
-    def update(self):
-        self.y += self.speed
-        if self.y > HEIGHT:
-            self.y = random.randint(-60, 0)
-            self.x = random.randint(0, WIDTH)
+    def update(self, dt: float) -> None:
+        self.age += dt
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        if self.y > self.h + 20:
+            self.y = random.uniform(-60, -10)
+            self.x = random.uniform(0, self.w)
 
-    def draw(self, screen):
-        pygame.draw.circle(screen, self.color, (self.x, self.y), self.r)
-
-
-class Sawdust:
-    """Small 'debris' effect for 2 seconds after capture."""
-    def __init__(self, cx: int, cy: int):
-        self.cx = cx
-        self.cy = cy
-        self.start = time.time()
-
-    def alive(self) -> bool:
-        return (time.time() - self.start) < 2.0
-
-    def draw(self, screen):
-        t = time.time() - self.start
-        alpha = max(0, 220 - int(t * 110))  # fade out
-        surf = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
-
-        for i in range(20):
-            x = (i * 7 + int(t * 35)) % SQUARE
-            y = (i * 11 + int(t * 28)) % SQUARE
-            pygame.draw.circle(surf, (200, 200, 200, alpha), (x, y), 2)
-
-        screen.blit(surf, (self.cx - SQUARE // 2, self.cy - SQUARE // 2))
+    @property
+    def dead(self) -> bool:
+        return self.age >= self.life
 
 
 class ChessGUI:
-    def __init__(self):
+    """
+    GUI features:
+    - Hover: lift piece + highlight square
+    - Click select (only your turn): show legal moves
+      * green dots for empty targets
+      * red overlay for capture targets
+    - Second click on target -> move
+    - Capture -> shard particles
+    - Win (king captured) -> overlay + confetti + "Powered by Hirokiory"
+    - Board state appended to board.txt after every successful move
+    """
+
+    def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Chess")
 
+        # layout
+        self.square = 96
+        self.board_px = self.square * 8
+        self.footer_h = 72
+        self.w = self.board_px
+        self.h = self.board_px + self.footer_h
+
+        self.screen = pygame.display.set_mode((self.w, self.h))
+        self.clock = pygame.time.Clock()
+
+        self.font = pygame.font.SysFont("Segoe UI", 22, bold=True)
+        self.small = pygame.font.SysFont("Segoe UI", 18, bold=False)
+
         self.board = Board()
-        self.board.setup_board()
+        self.board.setup_board()  # compatibility alias
 
-        self.turn = "WHITE"
-        self.selected: str | None = None
-        self.legal_moves: list[str] = []
-        self.hover_sq: str | None = None
-
-        self.images: dict[str, pygame.Surface] = {}
-        self.load_images()
-
-        self.font = pygame.font.SysFont("arial", 26)
-        self.big_font = pygame.font.SysFont("arial", 72)
+        # state
+        self.running = True
+        self.hover_sq: Optional[str] = None
+        self.selected_sq: Optional[str] = None
+        self.legal_moves: List[str] = []
 
         self.white_captures = 0
         self.black_captures = 0
-        self.effects: list[Sawdust] = []
 
-        self.winner: str | None = None
-        self.confetti = [Confetti() for _ in range(180)]
+        self.particles: List[Particle] = []
+        self.confetti: List[Confetti] = []
+        self.game_over = False
+        self.winner: Optional[str] = None
 
-    def load_images(self):
-        # expects assets: wP.png ... bK.png (case sensitive!)
-        pieces = ["P", "R", "N", "B", "Q", "K"]
-        for color in ("WHITE", "BLACK"):
-            for p in pieces:
-                filename = f"{color[0].lower()}{p}.png"  # wP.png, bK.png
-                img = pygame.image.load(f"assets/{filename}")
-                self.images[f"{color}_{p}"] = pygame.transform.scale(img, (SQUARE, SQUARE))
+        # assets
+        self.images = self._load_images()
 
-    def square_from_mouse(self, pos):
-        x, y = pos
-        if y >= WIDTH:
+        # Pre-save initial state (optional but useful)
+        self.board.save_board("board.txt")
+
+    def _load_images(self) -> dict:
+        img = {}
+        assets_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
+        assets_dir = os.path.normpath(assets_dir)
+
+        keys = ["wP","wR","wN","wB","wQ","wK","bP","bR","bN","bB","bQ","bK"]
+        for k in keys:
+            path = os.path.join(assets_dir, f"{k}.png")
+            if os.path.exists(path):
+                surf = pygame.image.load(path).convert_alpha()
+                surf = pygame.transform.smoothscale(surf, (self.square, self.square))
+                img[k] = surf
+        return img
+
+    # ---------- coordinate helpers ----------
+
+    def _xy_to_square(self, mx: int, my: int) -> Optional[str]:
+        if mx < 0 or my < 0 or mx >= self.board_px or my >= self.board_px:
             return None
-        col = x // SQUARE
-        row = y // SQUARE
-        file = chr(ord("a") + col)
-        rank = str(8 - row)
-        return file + rank
+        file_i = mx // self.square
+        rank_i = my // self.square
+        # top-left is rank 8
+        file_c = FILES[file_i]
+        rank_c = RANKS[7 - rank_i]
+        return f"{file_c}{rank_c}"
 
-    def square_to_screen_xy(self, square: str) -> tuple[int, int]:
-        col = ord(square[0]) - ord("a")
-        row = 8 - int(square[1])
-        return col * SQUARE, row * SQUARE
+    def _square_to_rect(self, sq: str) -> pygame.Rect:
+        file_i = FILES.index(sq[0])
+        rank_i = RANKS.index(sq[1])
+        x = file_i * self.square
+        y = (7 - rank_i) * self.square
+        return pygame.Rect(x, y, self.square, self.square)
 
-    def draw_board(self):
-        for r in range(8):
-            for c in range(8):
-                color = LIGHT if (r + c) % 2 == 0 else DARK
-                pygame.draw.rect(self.screen, color, (c * SQUARE, r * SQUARE, SQUARE, SQUARE))
+    # ---------- interaction ----------
 
-        # hover highlight (square overlay)
-        if self.hover_sq:
-            x, y = self.square_to_screen_xy(self.hover_sq)
-            surf = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
-            surf.fill(HOVER)
-            self.screen.blit(surf, (x, y))
+    def _select_square(self, sq: str) -> None:
+        p = self.board.get_piece(sq)
+        if p is None:
+            self.selected_sq = None
+            self.legal_moves = []
+            return
+        if getattr(p, "color", None) != self.board.turn:
+            self.selected_sq = None
+            self.legal_moves = []
+            return
+        self.selected_sq = sq
+        self.legal_moves = self.board.get_legal_moves(sq)
 
-        # selected highlight (square overlay)
-        if self.selected:
-            x, y = self.square_to_screen_xy(self.selected)
-            surf = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
-            surf.fill(SELECT)
-            self.screen.blit(surf, (x, y))
+    def _try_move(self, to_sq: str) -> None:
+        if self.selected_sq is None:
+            return
+        if to_sq not in self.legal_moves:
+            return
 
-    def draw_move_hints(self):
-        # pulsing for capture squares
-        pulse = 0.5 + 0.5 * (pygame.time.get_ticks() % 800) / 800.0  # 0..1
-        thickness = 3 + int(pulse * 3)
+        # capture detection BEFORE move
+        captured = self.board.get_piece(to_sq)
 
-        for sq in self.legal_moves:
-            x, y = self.square_to_screen_xy(sq)
-            target = self.board.get_piece(sq)
+        ok = self.board.move_piece(self.selected_sq, to_sq)
+        if not ok:
+            return
 
-            if target is None:
-                pygame.draw.circle(self.screen, GREEN_DOT, (x + SQUARE // 2, y + SQUARE // 2), 10)
+        # save after move (PDF requirement style)
+        self.board.save_board("board.txt")
+
+        # capture count + particles + win check
+        if captured is not None:
+            if getattr(captured, "color", None) == "white":
+                self.black_captures += 1
             else:
-                pygame.draw.rect(self.screen, RED, (x + 4, y + 4, SQUARE - 8, SQUARE - 8), thickness)
+                self.white_captures += 1
 
-    def draw_pieces(self):
-        selected_piece = None
+            # shards at destination center
+            r = self._square_to_rect(to_sq)
+            cx, cy = r.centerx, r.centery
+            for _ in range(26):
+                self.particles.append(Particle((cx, cy)))
 
-        # draw all except selected
+            # win if king captured (simple rule)
+            if type(captured).__name__ == "King":
+                self.game_over = True
+                self.winner = "WHITE" if self.board.turn == "black" else "BLACK"
+                self._start_confetti()
+
+        # clear selection
+        self.selected_sq = None
+        self.legal_moves = []
+
+    def _start_confetti(self) -> None:
+        self.confetti = [Confetti(self.w, self.h) for _ in range(140)]
+
+    # ---------- rendering ----------
+
+    def _draw_board(self) -> None:
+        light = (240, 218, 181)
+        dark = (184, 133, 92)
+
+        for r in range(8):
+            for f in range(8):
+                x = f * self.square
+                y = r * self.square
+                col = light if (r + f) % 2 == 0 else dark
+                pygame.draw.rect(self.screen, col, (x, y, self.square, self.square))
+
+        # hover highlight
+        if self.hover_sq:
+            rect = self._square_to_rect(self.hover_sq)
+            pygame.draw.rect(self.screen, (255, 255, 255), rect, 3)
+
+        # selected highlight
+        if self.selected_sq:
+            rect = self._square_to_rect(self.selected_sq)
+            pygame.draw.rect(self.screen, (70, 170, 255), rect, 4)
+
+    def _draw_moves_overlay(self) -> None:
+        if not self.selected_sq:
+            return
+        for sq in self.legal_moves:
+            rect = self._square_to_rect(sq)
+            target = self.board.get_piece(sq)
+            if target is None:
+                # green dot
+                cx, cy = rect.center
+                pygame.draw.circle(self.screen, (40, 200, 90), (cx, cy), 12)
+                pygame.draw.circle(self.screen, (20, 120, 55), (cx, cy), 12, 2)
+            else:
+                # capture square = red overlay
+                s = pygame.Surface((self.square, self.square), pygame.SRCALPHA)
+                s.fill((220, 60, 60, 90))
+                self.screen.blit(s, rect.topleft)
+                pygame.draw.rect(self.screen, (220, 60, 60), rect, 3)
+
+    def _draw_pieces(self) -> None:
+        # draw all pieces, lift hovered one slightly
         for sq, piece in self.board.squares.items():
             if piece is None:
                 continue
-            if self.selected == sq:
-                selected_piece = (sq, piece)
+
+            key = getattr(piece, "image_key", None)
+            if not isinstance(key, str):
                 continue
 
-            x, y = self.square_to_screen_xy(sq)
-            img = self.images.get(f"{piece.color}_{piece.symbol}")
-            if img:
-                self.screen.blit(img, (x, y))
+            img = self.images.get(key)
+            if img is None:
+                continue
 
-        # draw selected lifted with shadow
-        if selected_piece:
-            sq, piece = selected_piece
-            x, y = self.square_to_screen_xy(sq)
+            rect = self._square_to_rect(sq)
+            lift = 0
+            # lift only if hovering and it’s your turn piece
+            if self.hover_sq == sq and getattr(piece, "color", None) == self.board.turn and not self.game_over:
+                lift = -10
 
-            shadow = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow, (0, 0, 0, 90), (18, 56, 44, 14))
-            self.screen.blit(shadow, (x, y))
+            self.screen.blit(img, (rect.x, rect.y + lift))
 
-            img = self.images.get(f"{piece.color}_{piece.symbol}")
-            if img:
-                self.screen.blit(img, (x, y - 10))
+    def _draw_footer(self) -> None:
+        y0 = self.board_px
+        pygame.draw.rect(self.screen, (20, 20, 20), (0, y0, self.w, self.footer_h))
 
-    def draw_panel(self):
-        pygame.draw.rect(self.screen, (30, 30, 30), (0, WIDTH, WIDTH, PANEL))
+        turn_txt = f"Turn: {self.board.turn.upper()}"
+        wcap = f"WHITE captures: {self.white_captures}"
+        bcap = f"BLACK captures: {self.black_captures}"
 
-        txt1 = self.font.render(f"Turn: {self.turn}", True, (255, 255, 255))
-        self.screen.blit(txt1, (12, WIDTH + 10))
+        t1 = self.font.render(turn_txt, True, (255, 255, 255))
+        t2 = self.font.render(wcap, True, (255, 255, 255))
+        t3 = self.font.render(bcap, True, (255, 255, 255))
 
-        txt2 = self.font.render(f"WHITE captures: {self.white_captures}", True, (255, 255, 255))
-        self.screen.blit(txt2, (220, WIDTH + 10))
+        self.screen.blit(t1, (16, y0 + 20))
+        self.screen.blit(t2, (self.w // 2 - t2.get_width() // 2, y0 + 20))
+        self.screen.blit(t3, (self.w - t3.get_width() - 16, y0 + 20))
 
-        txt3 = self.font.render(f"BLACK captures: {self.black_captures}", True, (255, 255, 255))
-        self.screen.blit(txt3, (520, WIDTH + 10))
+    def _draw_particles(self) -> None:
+        for p in self.particles:
+            # shards as small rectangles
+            pygame.draw.rect(self.screen, (235, 235, 235), (p.pos.x, p.pos.y, p.size, p.size))
 
-    def update_effects(self):
-        self.effects = [e for e in self.effects if e.alive()]
-        for e in self.effects:
-            e.draw(self.screen)
+    def _draw_game_over(self) -> None:
+        if not self.game_over:
+            return
 
-    def draw_victory(self):
-        # dark overlay
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
+        overlay = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
         self.screen.blit(overlay, (0, 0))
 
-        # confetti
-        for c in self.confetti:
-            c.update()
-            c.draw(self.screen)
+        title = f"{self.winner} WIN!"
+        t1 = pygame.font.SysFont("Segoe UI", 56, bold=True).render(title, True, (255, 255, 255))
+        t2 = pygame.font.SysFont("Segoe UI", 22, bold=True).render("Congratulations!", True, (255, 255, 255))
+        t3 = pygame.font.SysFont("Segoe UI", 18, bold=False).render("Powered by Hirokiory", True, (255, 255, 255))
 
-        title = self.big_font.render("YOU WIN!", True, (255, 215, 0))
-        rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40))
-        self.screen.blit(title, rect)
+        self.screen.blit(t1, (self.w // 2 - t1.get_width() // 2, self.h // 2 - 90))
+        self.screen.blit(t2, (self.w // 2 - t2.get_width() // 2, self.h // 2 - 25))
+        self.screen.blit(t3, (self.w // 2 - t3.get_width() // 2, self.h // 2 + 15))
 
-        sub = self.font.render("Powered by Heorhii Horokh", True, (255, 255, 255))
-        sub_rect = sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20))
-        self.screen.blit(sub, sub_rect)
+    # ---------- main loop ----------
 
-        hint = self.font.render("Press ESC to exit", True, (255, 255, 255))
-        hint_rect = hint.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 55))
-        self.screen.blit(hint, hint_rect)
-
-    def on_click(self, sq: str | None):
-        if sq is None or self.winner is not None:
-            return
-
-        # 1) no selection: try select own piece
-        if self.selected is None:
-            piece = self.board.get_piece(sq)
-            if piece and piece.color == self.turn:
-                self.selected = sq
-                self.legal_moves = self.board.get_legal_moves(sq)
-            return
-
-        # 2) click same square -> deselect
-        if sq == self.selected:
-            self.selected = None
-            self.legal_moves = []
-            return
-
-        # 3) attempt move if legal
-        if sq in self.legal_moves:
-            captured = self.board.get_piece(sq)
-
-            try:
-                self.board.move_piece(self.selected, sq)
-
-                # capture effect + counters
-                if captured is not None:
-                    x, y = self.square_to_screen_xy(sq)
-                    self.effects.append(Sawdust(x + SQUARE // 2, y + SQUARE // 2))
-
-                    if self.turn == "WHITE":
-                        self.white_captures += 1
-                    else:
-                        self.black_captures += 1
-
-                    # if king captured -> winner
-                    if getattr(captured, "symbol", None) == "K":
-                        self.winner = self.turn
-
-                # switch turn (only if not game over)
-                if self.winner is None:
-                    self.turn = "BLACK" if self.turn == "WHITE" else "WHITE"
-
-            except Exception:
-                pass
-
-        # deselect always after second click
-        self.selected = None
-        self.legal_moves = []
-
-    def run(self):
-        running = True
-        clock = pygame.time.Clock()
-
-        while running:
-            clock.tick(60)
-
-            self.hover_sq = self.square_from_mouse(pygame.mouse.get_pos())
+    def run(self) -> None:
+        while self.running:
+            dt = self.clock.tick(60) / 1000.0
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    self.running = False
 
-                if event.type == pygame.KEYDOWN and self.winner is not None:
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
+                if event.type == pygame.MOUSEMOTION:
+                    sq = self._xy_to_square(*event.pos)
+                    self.hover_sq = sq
 
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    sq = self.square_from_mouse(pygame.mouse.get_pos())
-                    self.on_click(sq)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self.game_over:
+                        # allow click to exit win screen quickly
+                        self.running = False
+                        continue
 
-            self.screen.fill((0, 0, 0))
-            self.draw_board()
+                    sq = self._xy_to_square(*event.pos)
+                    if sq is None:
+                        continue
 
-            if self.selected and self.winner is None:
-                self.draw_move_hints()
+                    if self.selected_sq is None:
+                        self._select_square(sq)
+                    else:
+                        # second phase
+                        if sq == self.selected_sq:
+                            self.selected_sq = None
+                            self.legal_moves = []
+                        elif sq in self.legal_moves:
+                            self._try_move(sq)
+                        else:
+                            # reselect if clicking another own piece
+                            self._select_square(sq)
 
-            self.draw_pieces()
-            self.update_effects()
-            self.draw_panel()
+            # update particles
+            self.particles = [p for p in self.particles if not p.dead]
+            for p in self.particles:
+                p.update(dt)
 
-            if self.winner is not None:
-                self.draw_victory()
+            # update confetti
+            if self.game_over:
+                self.confetti = [c for c in self.confetti if not c.dead]
+                for c in self.confetti:
+                    c.update(dt)
 
+            # draw
+            self._draw_board()
+            self._draw_moves_overlay()
+            self._draw_pieces()
+            self._draw_particles()
+
+            # confetti above everything
+            if self.game_over:
+                for c in self.confetti:
+                    pygame.draw.rect(self.screen, (255, 255, 255), (c.x, c.y, c.size, c.size))
+                self._draw_game_over()
+
+            self._draw_footer()
             pygame.display.flip()
 
         pygame.quit()
-        
