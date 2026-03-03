@@ -307,3 +307,4 @@ class ChessGUI:
             pygame.display.flip()
 
         pygame.quit()
+        
